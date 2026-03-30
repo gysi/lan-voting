@@ -1,79 +1,621 @@
+<!--
+    LAN Party Dashboard
+    -------------------
+    A single-file, offline-ready React application designed for projecting on a beamer during LAN parties.
+
+    Features:
+    - Live Strawpoll embedding for voting
+    - Dynamic QR Code generation for easy mobile access
+    - Countdown timer to the next big event (e.g., "Pizza Arrives", "Tournament Start")
+    - Urgent Heartbeat Effect: Pulses red when < 30 mins remain
+    - Auto-scaling text: Event names and times shrink to fit the container without overflow
+    - Configurable settings: Update poll URL and event details via a config UI
+    - Persistence: Settings are saved to LocalStorage
+    - Dark 'Gamer' aesthetic with Tailwind CSS
+
+    Usage:
+    1. Open this file in any modern web browser.
+    2. Click "Config" to set your Strawpoll URL and Event details.
+    3. Click "Test Effect" to preview the urgent animation.
+    4. Click "Present" and "Toggle Fullscreen" to display on your projector.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LAN Party Voting</title>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <title>LAN Party Dashboard</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Custom Styles for Animations -->
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        #countdown {
-            font-size: 2rem;
-            margin: 20px 0;
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
         }
-        #poll-container {
-            margin: 20px auto;
-            width: 80%;
-            max-width: 640px;
-            border: 2px solid #333;
-            border-radius: 8px;
-            overflow: hidden;
+
+        /* Urgent Heartbeat Animation - 5 pulses, 1.75s total */
+        @keyframes heartbeat {
+            0%   { transform: scale(1); border-color: rgba(34,197,94,0.3); background-color: rgba(30, 41, 59, 0.8); box-shadow: 0 0 20px rgba(34,197,94,0.1); }
+            10%  { transform: scale(1.02); border-color: rgba(239,68,68,0.8); background-color: rgba(69, 10, 10, 0.9); box-shadow: 0 0 60px rgba(239,68,68,0.6); }
+            20%  { transform: scale(1); border-color: rgba(34,197,94,0.3); background-color: rgba(30, 41, 59, 0.8); box-shadow: 0 0 20px rgba(34,197,94,0.1); }
+            30%  { transform: scale(1.02); border-color: rgba(239,68,68,0.8); background-color: rgba(69, 10, 10, 0.9); box-shadow: 0 0 60px rgba(239,68,68,0.6); }
+            40%  { transform: scale(1); border-color: rgba(34,197,94,0.3); background-color: rgba(30, 41, 59, 0.8); box-shadow: 0 0 20px rgba(34,197,94,0.1); }
+            50%  { transform: scale(1.02); border-color: rgba(239,68,68,0.8); background-color: rgba(69, 10, 10, 0.9); box-shadow: 0 0 60px rgba(239,68,68,0.6); }
+            60%  { transform: scale(1); border-color: rgba(34,197,94,0.3); background-color: rgba(30, 41, 59, 0.8); box-shadow: 0 0 20px rgba(34,197,94,0.1); }
+            70%  { transform: scale(1.02); border-color: rgba(239,68,68,0.8); background-color: rgba(69, 10, 10, 0.9); box-shadow: 0 0 60px rgba(239,68,68,0.6); }
+            80%  { transform: scale(1); border-color: rgba(34,197,94,0.3); background-color: rgba(30, 41, 59, 0.8); box-shadow: 0 0 20px rgba(34,197,94,0.1); }
+            90%  { transform: scale(1.02); border-color: rgba(239,68,68,0.8); background-color: rgba(69, 10, 10, 0.9); box-shadow: 0 0 60px rgba(239,68,68,0.6); }
+            100% { transform: scale(1); border-color: rgba(34,197,94,0.3); background-color: rgba(30, 41, 59, 0.8); box-shadow: 0 0 20px rgba(34,197,94,0.1); }
         }
-        iframe {
-            width: 100%;
-            height: 544px;
-            border: none;
+
+        .urgent-pulse {
+            animation: heartbeat 1.75s ease-in-out forwards;
+            /* Ensure the animation overrides standard classes when active */
+            z-index: 10;
         }
-        #qrcode {
-            margin: 0
-            width: 150px;
-            height: 150px;
+
+        /* Attention Effects */
+        @keyframes strobe {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.8; background-color: white; }
+        }
+        @keyframes flash-red {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.6; background-color: red; }
+        }
+        @keyframes police {
+            0%, 100% { opacity: 0.5; background-color: blue; }
+            50% { opacity: 0.5; background-color: red; }
+        }
+
+        .effect-strobe { animation: strobe 0.1s steps(2, start) infinite; }
+        .effect-red { animation: flash-red 0.5s ease-in-out infinite; }
+        .effect-police { animation: police 0.6s steps(2, start) infinite; }
+
+        /* Hide scrollbar for cleaner look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Fix for select dropdown options visibility */
+        option {
+            background-color: #1e293b; /* slate-800 */
+            color: #e2e8f0; /* slate-200 */
         }
     </style>
 </head>
-<body>
-    <h1>LAN Party Game Voting</h1>
-    <div id="countdown">Time until next game: </div>
+<body class="bg-slate-950 text-slate-200">
+<div id="root"></div>
 
-    <div id="poll-container">
-        <h2>Vote for the Next Game</h2>
-        <!-- Embed StrawPoll -->
-        <div class="strawpoll-embed" id="strawpoll_BJnXV14M8Zv" style="height: 544px; max-width: 640px; width: 100%; margin: 0 auto; display: flex; flex-direction: column;">
-            <iframe title="StrawPoll Embed" id="strawpoll_iframe_BJnXV14M8Zv" 
-                src="https://strawpoll.com/embed/BJnXV14M8Zv" 
-                style="position: static; visibility: visible; display: block; width: 100%; flex-grow: 1;" 
-                frameborder="0" allowfullscreen allowtransparency>
-                Loading...
-            </iframe>
-            <script async src="https://cdn.strawpoll.com/dist/widgets.js" charset="utf-8"></script>
+<script type="text/babel">
+  const { useState, useEffect, useRef, useLayoutEffect } = React;
+
+  // --- Icons ---
+  const Icon = ({ path, size = 24, className = "" }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {path}
+    </svg>
+  );
+
+  const Icons = {
+    Settings: (props) => <Icon {...props} path={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.35a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>} />,
+    Monitor: (props) => <Icon {...props} path={<><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></>} />,
+    Clock: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />,
+    QrCode: (props) => <Icon {...props} path={<><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></>} />,
+    Save: (props) => <Icon {...props} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />,
+    Maximize: (props) => <Icon {...props} path={<><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></>} />,
+    Minimize: (props) => <Icon {...props} path={<><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></>} />,
+    Zap: (props) => <Icon {...props} path={<><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></>} />,
+    AlertTriangle: (props) => <Icon {...props} path={<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>} />
+  };
+
+  // --- Helpers ---
+
+  const getEmbedUrl = (url) => {
+    try {
+      if (url.includes('strawpoll.com')) {
+        const parts = url.split('/');
+        const id = parts[parts.length - 1];
+        return `https://strawpoll.com/embed/${id}`;
+      }
+      return url;
+    } catch (e) {
+      return url;
+    }
+  };
+
+  // --- Component: FitContainer ---
+  // Robust scaling that handles overflow by using absolute positioning centering
+  const FitContainer = ({ children, className = "" }) => {
+    const containerRef = useRef(null);
+    const contentRef = useRef(null);
+
+    useLayoutEffect(() => {
+      const handleResize = () => {
+        const container = containerRef.current;
+        const content = contentRef.current;
+        if (!container || !content) return;
+
+        // 1. Reset to natural size to measure
+        content.style.transform = 'none';
+        content.style.width = '100%'; // Force wrap at container width
+        content.style.height = 'auto';
+
+        const containerW = container.clientWidth;
+        const containerH = container.clientHeight;
+
+        const contentW = content.scrollWidth;
+        const contentH = content.scrollHeight;
+
+        if (contentW === 0 || contentH === 0) return;
+
+        // 2. Calculate Scale
+        // We want to fit fully inside, so we take the smaller of the two ratios
+        const scaleX = containerW / contentW;
+        const scaleY = containerH / contentH;
+        const scale = Math.min(1, scaleX, scaleY) * 0.95; // 95% scale to leave a breathing room
+
+        // 3. Calculate Centering Offsets
+        // Since we scale top-left, we need to translate it to the middle
+        const translateX = (containerW - (contentW * scale)) / 2;
+        const translateY = (containerH - (contentH * scale)) / 2;
+
+        // 4. Apply Transform
+        content.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        content.style.transformOrigin = 'top left';
+      };
+
+      const observer = new ResizeObserver(handleResize);
+      if (containerRef.current) observer.observe(containerRef.current);
+      if (contentRef.current) observer.observe(contentRef.current);
+
+      window.addEventListener('resize', handleResize);
+      handleResize(); // Initial call
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        observer.disconnect();
+      };
+    }, [children]);
+
+    return (
+      <div ref={containerRef} className={`relative w-full h-full overflow-hidden ${className}`}>
+        <div
+          ref={contentRef}
+          className="absolute top-0 left-0 flex flex-col items-center justify-center"
+          style={{ width: '100%' }}
+        >
+          {children}
         </div>
+      </div>
+    );
+  };
+
+  // --- Sub-Components ---
+
+  const PresentationView = ({ config, timeLeft, showPulse, testPulse }) => {
+    const hasPoll = config.pollUrl && config.pollUrl.trim() !== "";
+
+    // Logic for deterministic pulsing (every 15s)
+    const [autoPulseActive, setAutoPulseActive] = useState(false);
+    const [pulseDelay, setPulseDelay] = useState(0);
+
+    useEffect(() => {
+      const checkPulse = () => {
+        const now = Date.now();
+        const cycleDuration = 15000; // 15 seconds cycle
+        const animationDuration = 1750; // 1.75 seconds duration
+
+        const timeInCycle = now % cycleDuration;
+
+        if (timeInCycle < animationDuration) {
+          // Inside the pulse window
+          if (!autoPulseActive) {
+            setAutoPulseActive(true);
+            setPulseDelay(-timeInCycle);
+          }
+        } else {
+          // Outside the pulse window
+          if (autoPulseActive) {
+            setAutoPulseActive(false);
+          }
+        }
+      };
+
+      const interval = setInterval(checkPulse, 100);
+      checkPulse();
+      return () => clearInterval(interval);
+    }, [autoPulseActive]);
+
+    const isUrgent = showPulse && !testPulse;
+    const effectiveShowPulse = testPulse || (isUrgent && autoPulseActive);
+
+    const animationDelay = testPulse ? '0s' : `${pulseDelay}ms`;
+    const pulseStyle = effectiveShowPulse ? { animationDelay } : {};
+
+    // Helper to determine container classes including pulse effect
+    const getContainerClass = () => {
+      if (timeLeft.isExpired) return 'bg-red-900/20 border-red-500/50 shadow-[0_0_100px_rgba(239,68,68,0.4)]';
+      if (effectiveShowPulse) return 'urgent-pulse';
+      return 'bg-slate-800/80 border-green-500/30 shadow-[0_0_100px_rgba(34,197,94,0.2)]';
+    };
+
+    const getStandardContainerClass = () => {
+      if (timeLeft.isExpired) return 'bg-red-900/20 border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.2)]';
+      if (effectiveShowPulse) return 'urgent-pulse';
+      return 'bg-slate-800/80 border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.1)]';
+    };
+
+    if (!hasPoll) {
+      // --- EVENT ONLY VIEW (No Poll URL set) ---
+      return (
+        <div className="flex flex-col h-full animate-fade-in items-center justify-center p-6">
+          <div style={pulseStyle} className={`w-full max-w-5xl aspect-video border-4 rounded-3xl p-8 flex flex-col items-center justify-center transition-colors duration-500 ${getContainerClass()}`}>
+            <h3 className={`font-bold mb-4 text-4xl flex items-center gap-4 uppercase tracking-wider shrink-0 ${timeLeft.isExpired ? 'text-red-400' : 'text-green-400'}`}>
+              <Icons.Clock size={48} /> {new Date(config.eventTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})} - Next Event
+            </h3>
+
+            <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-center mb-8">
+              <FitContainer>
+                <h2 className="text-7xl font-black text-white mb-4 drop-shadow-lg whitespace-pre-wrap break-words leading-tight text-center">{config.eventName}</h2>
+              </FitContainer>
+            </div>
+
+            {timeLeft.isExpired ? (
+              <div className="text-8xl font-black text-red-500 animate-pulse shrink-0">
+                NOW!
+              </div>
+            ) : (
+               <div className="grid grid-cols-3 gap-12 text-center w-full max-w-3xl shrink-0">
+                 <div className="bg-slate-900/60 p-8 rounded-2xl border-2 border-slate-700 backdrop-blur-sm">
+                   <span className="block text-5xl font-mono font-bold text-white">{String(timeLeft.hours).padStart(2, '0')}</span>
+                   <span className="text-m text-slate-500 uppercase mt-2 block font-bold tracking-widest">Hrs</span>
+                 </div>
+                 <div className="bg-slate-900/60 p-8 rounded-2xl border-2 border-slate-700 backdrop-blur-sm">
+                   <span className="block text-5xl font-mono font-bold text-white">{String(timeLeft.minutes).padStart(2, '0')}</span>
+                   <span className="text-m text-slate-500 uppercase mt-2 block font-bold tracking-widest">Min</span>
+                 </div>
+                 <div className="bg-slate-900/60 p-8 rounded-2xl border-2 border-slate-700 backdrop-blur-sm">
+                   <span className="block text-5xl font-mono font-bold text-white">{String(timeLeft.seconds).padStart(2, '0')}</span>
+                   <span className="text-m text-slate-500 uppercase mt-2 block font-bold tracking-widest">Sec</span>
+                 </div>
+               </div>
+             )}
+          </div>
+        </div>
+      );
+    }
+
+    // --- STANDARD VIEW (Split Screen) ---
+    return (
+      <div className="flex flex-col h-full animate-fade-in">
+        <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 overflow-hidden">
+          {/* Left: The Poll */}
+          <div className="flex-1 bg-slate-800/50 border-2 border-cyan-500/30 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.1)] overflow-hidden flex flex-col relative">
+            <div className="absolute top-0 left-0 bg-cyan-500 text-slate-900 font-bold px-3 py-1 text-sm z-10">
+              LIVE POLL
+            </div>
+            <iframe
+              src={getEmbedUrl(config.pollUrl)}
+              title="Strawpoll"
+              className="w-full h-full border-0"
+              style={{ minHeight: '400px' }}
+            />
+          </div>
+
+          {/* Right: Info Panel */}
+          <div className="w-full lg:w-1/3 flex flex-col gap-6">
+
+            {/* Timer Card (Top) */}
+            <div style={pulseStyle} className={`flex-1 border rounded-xl p-6 flex flex-col items-center justify-center transition-colors duration-500 ${getStandardContainerClass()}`}>
+              <h3 className={`font-bold mb-2 flex items-center gap-2 uppercase tracking-wider shrink-0 ${timeLeft.isExpired ? 'text-red-400' : 'text-green-400'}`}>
+                <Icons.Clock size={20} />{new Date(config.eventTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})} - Next Event
+              </h3>
+
+              <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-center mb-4">
+                <FitContainer>
+                  <h2 className="text-3xl font-bold text-white mb-1 whitespace-pre-wrap break-words leading-tight text-center">{config.eventName}</h2>
+                </FitContainer>
+              </div>
+
+              {timeLeft.isExpired ? (
+                <div className="text-4xl font-black text-red-500 animate-pulse shrink-0">
+                  NOW!
+                </div>
+              ) : (
+                 <div className="grid grid-cols-3 gap-4 text-center shrink-0">
+                   <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
+                     <span className="block text-3xl font-mono font-bold text-white">{String(timeLeft.hours).padStart(2, '0')}</span>
+                     <span className="text-xs text-slate-500 uppercase">Hrs</span>
+                   </div>
+                   <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
+                     <span className="block text-3xl font-mono font-bold text-white">{String(timeLeft.minutes).padStart(2, '0')}</span>
+                     <span className="text-xs text-slate-500 uppercase">Min</span>
+                   </div>
+                   <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
+                     <span className="block text-3xl font-mono font-bold text-white">{String(timeLeft.seconds).padStart(2, '0')}</span>
+                     <span className="text-xs text-slate-500 uppercase">Sec</span>
+                   </div>
+                 </div>
+               )}
+            </div>
+
+            {/* QR Code Card (Bottom) */}
+            <div className="bg-slate-800/80 border border-purple-500/30 p-6 rounded-xl flex flex-col items-center justify-center shadow-[0_0_20px_rgba(168,85,247,0.1)] shrink-0">
+              <h3 className="text-purple-400 font-bold mb-4 flex items-center gap-2 uppercase tracking-wider">
+                <Icons.QrCode size={20} /> Scan to Vote
+              </h3>
+              <div className="bg-white p-4 rounded-lg">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(config.pollUrl)}&bgcolor=ffffff`}
+                  alt="Poll QR"
+                  className="w-48 h-48 object-contain"
+                />
+              </div>
+              <p className="text-slate-400 text-xs mt-4 break-all text-center font-mono">
+                {config.pollUrl}
+              </p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const ConfigView = ({ config, handleConfigChange, setMode }) => (
+    <div className="p-8 max-w-3xl mx-auto animate-fade-in">
+      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <Icons.Settings className="text-cyan-400" /> Configuration
+        </h2>
+
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-300">Strawpoll URL</label>
+            <input
+              type="text"
+              name="pollUrl"
+              value={config.pollUrl}
+              onChange={handleConfigChange}
+              className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
+              placeholder="https://strawpoll.com/..."
+            />
+            <p className="text-xs text-slate-500">Leave this empty to focus exclusively on the Event Timer.</p>
+          </div>
+
+          <hr className="border-slate-700" />
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-300">Next Event Name</label>
+            <textarea
+              name="eventName"
+              value={config.eventName}
+              onChange={handleConfigChange}
+              className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none transition-all h-32 resize-none"
+              placeholder="e.g., Pizza Arrives&#10;CS2 Tournament Start"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-300">Event Time</label>
+            <input
+              type="datetime-local"
+              name="eventTime"
+              value={config.eventTime}
+              onChange={handleConfigChange}
+              className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none transition-all [color-scheme:dark]"
+            />
+          </div>
+
+          <div className="pt-6 flex justify-end">
+            <button
+              onClick={() => setMode('present')}
+              className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors"
+            >
+              <Icons.Save size={18} /> Save & Present
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
+  );
 
-    <h3 style="margin-bottom: 0;">Scan to Vote</h3>
-    <canvas id="qrcode"></canvas>
+  // --- Main App ---
 
+  const App = () => {
+    const [mode, setMode] = useState('present');
 
-    <script>
-        let countdownTime = 600;
-        const countdownEl = document.getElementById('countdown');
-        const updateCountdown = () => {
-            const minutes = Math.floor(countdownTime / 60);
-            const seconds = countdownTime % 60;
-            countdownEl.textContent = `Time until next game: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-            if (countdownTime > 0) countdownTime--;
-        };
-        setInterval(updateCountdown, 1000);
+    const [config, setConfig] = useState(() => {
+      const saved = localStorage.getItem('lanPartyConfig');
+      return saved ? JSON.parse(saved) : {
+        pollUrl: 'https://strawpoll.com/BJnXV14M8Zv',
+        eventName: 'Pizza Delivery',
+        eventTime: new Date(Date.now() + 1000 * 60 * 60 * 2).toISOString().slice(0, 16)
+      };
+    });
 
-        // QR Code Generator
-        const pollUrl = "https://strawpoll.com/BJnXV14M8Zv";
-        const qrCodeCanvas = document.getElementById('qrcode');
-        QRCode.toCanvas(qrCodeCanvas, pollUrl, { width: 150 }, function (error) {
-            if (error) console.error(error);
-        });
-    </script>
+    const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0, isExpired: false });
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [testPulse, setTestPulse] = useState(false);
+
+    // Attention Effect State
+    const [attentionActive, setAttentionActive] = useState(false);
+    const [attentionEffect, setAttentionEffect] = useState('effect-strobe');
+    const attentionTimeoutRef = useRef(null);
+
+    useEffect(() => {
+      localStorage.setItem('lanPartyConfig', JSON.stringify(config));
+    }, [config]);
+
+    useEffect(() => {
+      const interval = setInterval(() => {
+        const now = new Date().getTime();
+        const target = new Date(config.eventTime).getTime();
+        const difference = target - now;
+
+        if (difference < 0) {
+          setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isExpired: true });
+        } else {
+          const hours = Math.floor(difference / (1000 * 60 * 60));
+          const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+          const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+          setTimeLeft({ hours, minutes, seconds, isExpired: false });
+        }
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }, [config.eventTime]);
+
+    const toggleFullscreen = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+          setIsFullscreen(false);
+        }
+      }
+    };
+
+    const handleTestPulse = () => {
+      setTestPulse(true);
+      // Run for one animation cycle (1.75s) then stop
+      setTimeout(() => setTestPulse(false), 2000);
+    };
+
+    const triggerAttention = () => {
+      if (attentionTimeoutRef.current) clearTimeout(attentionTimeoutRef.current);
+      setAttentionActive(true);
+      attentionTimeoutRef.current = setTimeout(() => {
+        setAttentionActive(false);
+      }, 5000);
+    };
+
+    const handleConfigChange = (e) => {
+      const { name, value } = e.target;
+      setConfig(prev => ({ ...prev, [name]: value }));
+    };
+
+    // Determine if we should show the pulse
+    // 1. If user clicked test
+    // 2. OR if time is < 30 mins AND not expired AND not more than an hour away
+    const isUrgent = !timeLeft.isExpired && timeLeft.hours === 0 && timeLeft.minutes < 30;
+    const showPulse = testPulse || isUrgent;
+
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-cyan-500/30">
+        <nav className="h-14 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-4">
+          <div className="flex items-center gap-2">
+            <span className="text-cyan-500 font-black tracking-tighter text-xl">LAN<span className="text-white">OS</span></span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Attention Controls */}
+            <div className="flex items-center bg-slate-800 rounded-md border border-slate-700 mr-2 h-9">
+              <select
+                value={attentionEffect}
+                onChange={(e) => setAttentionEffect(e.target.value)}
+                className="bg-transparent text-xs text-slate-300 pl-2 pr-1 outline-none cursor-pointer hover:text-white border-r border-slate-700 h-full rounded-l-md appearance-none text-center font-medium"
+                style={{ textAlignLast: 'center' }}
+              >
+                <option value="effect-strobe">Strobe</option>
+                <option value="effect-red">Alarm</option>
+                <option value="effect-police">Police</option>
+              </select>
+              <button
+                onClick={triggerAttention}
+                className={`px-3 h-full flex items-center justify-center rounded-r-md transition-all ${attentionActive ? 'bg-yellow-500 text-slate-900' : 'text-yellow-500 hover:bg-yellow-500/20'}`}
+                title="Trigger Attention (5s)"
+              >
+                <Icons.AlertTriangle size={16} />
+              </button>
+            </div>
+
+            <button
+              onClick={handleTestPulse}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${testPulse ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'hover:text-white text-slate-400'}`}
+              title="Test Urgent Effect (15s)"
+            >
+              <Icons.Zap size={16}/> <span className="hidden sm:inline">Test Effect</span>
+            </button>
+            <button
+              onClick={() => setMode('present')}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${mode === 'present' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/50' : 'hover:text-white text-slate-400'}`}
+            >
+              <div className="flex items-center gap-2"><Icons.Monitor size={16}/> Present</div>
+            </button>
+            <button
+              onClick={() => setMode('config')}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${mode === 'config' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/50' : 'hover:text-white text-slate-400'}`}
+            >
+              <div className="flex items-center gap-2"><Icons.Settings size={16}/> Config</div>
+            </button>
+            <div className="w-px h-4 bg-slate-700 mx-2"></div>
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+              title="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Icons.Minimize size={18} /> : <Icons.Maximize size={18} />}
+            </button>
+          </div>
+        </nav>
+
+        <main className="h-[calc(100vh-3.5rem)] overflow-hidden">
+          {mode === 'present' ? (
+            <PresentationView config={config} timeLeft={timeLeft} showPulse={showPulse} testPulse={testPulse} />
+          ) : (
+             <ConfigView config={config} handleConfigChange={handleConfigChange} setMode={setMode} />
+           )}
+        </main>
+
+        {/* Attention Overlay */}
+        {attentionActive && (
+          <div className={`fixed inset-0 z-[9999] pointer-events-none ${attentionEffect}`}></div>
+        )}
+      </div>
+    );
+  };
+
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<App />);
+</script>
 </body>
 </html>
